@@ -1,0 +1,66 @@
+Phase 1: Foundation (The Data Firehose & Mobile Shell)
+This phase sets up the environment so your Antigravity agents have data to read and a UI to update.
+
+Task 1.1: Define Data Schemas (JSON)
+
+Action: Create a schemas.json or Python Pydantic models for the three required data streams.
+
+Social Schema: id, timestamp, location, text, credibility_score.
+
+Weather Schema: id, timestamp, alert_type, severity, affected_zones.
+
+Traffic Schema: id, timestamp, route_name, congestion_level, average_speed.
+
+Task 1.2: Build the Mock API Server
+
+Action: Write a main.py file using FastAPI.
+
+Endpoints: Create /api/social, /api/weather, and /api/traffic.
+
+Logic: Have these endpoints return synthetic JSON data based on the schemas above to simulate live streams.
+
+Task 1.3: Generate the Expo Mobile Scaffold
+
+Action: Open Google Antigravity.
+
+Prompt to Antigravity: "Initialize a new React Native Expo project. Create a 3-screen mobile application consisting of: 1. A 'Live Signals' feed, 2. An 'Active Crises & Simulation' dashboard, and 3. A 'Resource Allocation' status page. Use dummy data for the UI components for now. Configure the app to eventually fetch JSON data from a local Python backend running on localhost:8000. Provide the artifacts and the command to run it."
+
+Phase 2: Core Intelligence (Antigravity Multi-Agent Setup)
+This is where you earn the massive 45% of points for Antigravity Integration and Crisis Detection.
+
+Task 2.1: The Fusion & Triage Agent (Ingestion)
+
+Action: Prompt Antigravity to create an agent that continuously polls your FastAPI endpoints.
+
+Logic: Implement a credibility scoring mechanism (e.g., flag tweets that contradict the weather API).
+
+Task 2.2: The Crisis Analyst Agent (Classification)
+
+Action: Build the agent that analyzes flagged anomalies.
+
+Logic: Output a structured classification (e.g., "Urban Flood, High Severity, G-10, 85% Confidence").
+
+Task 2.3: The Resource Commander Agent (Allocation)
+
+Action: Define a static inventory (e.g., 5 Ambulances, 3 Rescue Teams).
+
+Logic: Build the logic to allocate these resources when two crises happen simultaneously.
+
+Phase 3: Simulation & Recovery
+This secures the 15% for Impact Simulation and proves the system handles stress tests.
+
+Task 3.1: The Execution Agent (Simulation)
+
+Action: Build the agent that "acts" on the Commander's decisions.
+
+Logic: Have it push updates back to your FastAPI server (e.g., update a /api/active_crises endpoint that your Expo app is reading).
+
+Task 3.2: The Verifier Agent (False Positives)
+
+Action: Implement the stress-test recovery loop.
+
+Logic: Feed the system a contradictory "Field Report." Force the agent to retract a previous public alert and stand down resources.
+
+Task 3.3: UI Integration
+
+Action: Connect your generated Expo app to your FastAPI backend so the dummy data is replaced with your live agent simulations.
