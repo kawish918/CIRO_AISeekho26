@@ -11,65 +11,98 @@
 │                         CIRO System Architecture                        │
 └────────────────────────────────────────────────────────────────────────┘
 
+  ┌──────────────┐    REST/JSON    ┌──────────────────────────────────────┐
+  │  Expo Mobile  │◄──────────────►│   FastAPI Backend  (Port 8000)        │
+  │  (3 screens)  │                │   In-memory data stores               │
+  └──────────────┘                └──────────────┬───────────────────────┘
+                                                  │  HTTP POST/GET
+                                                  ▼
+                                   ┌──────────────────────────────────────┐
+                                   │   MASTER ORCHESTRATOR (always on)     │
   ┌──────────────┐    REST/JSON    ┌──────────────────────┐
   │  Expo Mobile  │◄──────────────►│   FastAPI Backend     │
   │  (3 screens)  │                │   (Port 8000)         │
   └──────────────┘                └──────────┬───────────┘
                                              │ HTTP Poll
                                              ▼
-                                   ┌──────────────────────┐
-                                   │  LangGraph Pipeline  │
-                                   │  (agents.py)         │
-                                   └──────────────────────┘
+                                   ┌──────────────────────────────┐
+                                   │  MasterOrchestrator          │
+                                   │  (agents.py — always on)     │
+                                   │  └─► LangGraph Pipeline      │
+                                   │       (dispatched on demand) │
+                                   └──────────────────────────────┘
 ```
 
 ---
 
+## Master Orchestrator — Always-On Architecture
+
+The **MasterOrchestrator** is the continuously running brain of CIRO. It never stops.
+
+```
+  ┌──────────────────────────────────────────────────────────────┐
+  │                  MASTER ORCHESTRATOR (always running)        │
+  │                                                              │
+  │   every 5 seconds:                                           │
+  │   ┌─────────────────────────────────────────┐               │
+  │   │  👁 QUICK SCAN (lightweight LLM call)   │               │
+  │   │  • Polls 5 signal sources               │               │
+  │   │  • Checks mention_velocity & sensors    │               │
+  │   │  • Requires ≥2 sources to corroborate   │               │
+  │   └──────────────┬──────────────────────────┘               │
+  │                  │                                           │
+  │         anomalies detected?                                  │
+  │              │                                               │
+  │         YES ─┤                       NO                      │
+  │              │                        └─► stay alert, loop   │
+  │              ▼                                               │
+  │   ┌──────────────────────────────────────┐                  │
+  │   │  🚨 DISPATCH FULL PIPELINE           │                  │
+  │   │  (30s cooldown between dispatches)   │                  │
+  │   └──────────────┬───────────────────────┘                  │
+  └──────────────────┼───────────────────────────────────────────┘
+                     ▼
+```
+
 ## LangGraph Agent Pipeline (7 Nodes, Conditional Routing)
 
 ```
-  ┌─────────────┐
-  │  CYCLE START │
-  └──────┬──────┘
-         │
-         ▼
+  ┌──────────────────┐
+  │  LangGraph Graph  │  (7-node conditional pipeline, event-driven)
+  └────────┬─────────┘
+           │
+           ▼
   ┌────────────────────┐
-  │ 1. Fusion & Triage │  ← Polls 5 signal streams (Social, Weather, Traffic, Calls, Sensors)
-  │  📡 FusionAgent    │    LLM cross-references, scores credibility, flags contradictions
+  │ 1. Fusion & Triage │  ← Full 5-source fusion with credibility scoring
+  │  📡 FusionAgent    │    mention_velocity, sensor thresholds, contradictions
   └─────────┬──────────┘
-            │
             ▼
   ┌────────────────────┐
-  │ 2. Crisis Analyst  │  ← LLM classifies type (flood/heatwave/…), severity,
-  │  🧠 AnalystAgent   │    affected pop., radius, duration, spread risk
+  │ 2. Crisis Analyst  │  ← Classifies type, severity, population, radius,
+  │  🧠 AnalystAgent   │    duration, spread risk, uncertainty range
   └─────────┬──────────┘
-            │
             ▼
   ┌────────────────────┐
-  │ 3. Resource Cmd.   │  ← Allocates constrained resources using live Google
-  │  ⚡ Commander      │    Maps ETA (Distance Matrix API), shows trade-offs
+  │ 3. Resource Cmd.   │  ← Constrained allocation + live Google Maps ETA
+  │  ⚡ Commander      │    Shows trade-offs between simultaneous crises
   └─────────┬──────────┘
-            │
             ▼
   ┌────────────────────┐
-  │ 4. Execution       │  ← LLM simulates response actions: before/after state,
-  │  🎯 ExecutionAgent │    congestion impact, resource cost, side effects
+  │ 4. Execution       │  ← Before/after simulation, congestion impact,
+  │  🎯 ExecutionAgent │    resource cost, side effects per action
   └─────────┬──────────┘
-            │
             ▼
   ┌────────────────────┐
-  │ 5. Notification    │  ← Generates tailored messages for 6 stakeholder
-  │  📨 NotifAgent     │    audiences (public, hospitals, police, media…)
+  │ 5. Notification    │  ← 6 tailored stakeholder messages
+  │  📨 NotifAgent     │    (public, hospitals, police, utility, transport, media)
   └─────────┬──────────┘
-            │
             ▼
   ┌────────────────────┐
-  │ 6. Verifier        │  ← Reads field reports. Detects contradictions via LLM.
-  │  🔎 VerifierAgent  │    Issues retraction if false positive found.
+  │ 6. Verifier        │  ← Field report contradiction detection via LLM
+  │  🔎 VerifierAgent  │    Issues retraction if false positive confirmed
   └─────────┬──────────┘
             │
      ┌──────▼──────┐  false_positive_ids present?
-     │  Conditional │─────────────────────────────────────────────────┐
      │   Routing    │  NO → END                                        │
      └─────────────┘                                                   │ YES
                                                                        ▼
@@ -209,9 +242,11 @@ cd backend
 pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-# 2. Agent pipeline (separate terminal)
+# 2. Master Orchestrator — always-on agent (separate terminal)
 cd backend
 python agents.py
+# Starts MasterOrchestrator: polls signals every 5s,
+# dispatches full 7-agent pipeline only when anomalies detected
 
 # 3. Mobile app
 cd mobile_app
@@ -220,35 +255,45 @@ npx expo start
 # Scan QR with Expo Go app
 ```
 
-> For distribution: update `API` constant in `mobile_app/src/constants/api.ts` with your local IP or hosted backend URL before running.
+> For distribution: update `API` in `mobile_app/src/constants/api.ts` with your local IP (run `ipconfig` → IPv4 Address).
 
 ---
 
 ## Scenario Walkthrough
 
-### Cycle 1 — Simultaneous Crisis Detection
-1. Fusion agent ingests data from 5 sources: social posts, weather alerts, traffic readings, emergency calls, and IoT sensors.
-2. LLM cross-references: G-10 has social + heavy rain + congestion + high water-level sensor → high confidence flood
-3. Analyst classifies 2 crises (G-10 Flood, F-8 Heatwave) with severity, population, radius, duration
-4. Commander fetches live ETA from PIMS Hospital to G-10 via Google Maps API (e.g. "12 mins") → injects into LLM prompt
-5. Resources allocated: Ambulances, Rescue Teams, Field Teams based on constrained inventory
-6. Execution simulates rerouting, hospital prep, public alert
-7. Notifications sent to 6 audiences (public, hospitals, police, media...)
-8. Verifier: no field reports yet → confirms crises active
+### Startup — MasterOrchestrator begins watching
+- `python agents.py` starts the **MasterOrchestrator** loop
+- Every 5 seconds it runs a lightweight LLM quick-scan across 5 signal sources
+- Requires ≥2 corroborating sources before triggering the pipeline (prevents false alarms)
 
-### Cycle 2 — False Positive Recovery (Adaptation)
-1. Field report injected: "No flooding in G-10 — broken water main only, water receding"
-2. Verifier LLM compares field report vs. original crisis → `is_false_positive: true`
-3. Retraction notification sent to public
-4. **Conditional edge fires** → Graph routes to `Rollback` node
-5. Rollback parses `"3 Ambulances"`, `"2 Rescue Teams"` → increments inventory
-6. Resources freed, inventory updated, system fully adapted
+### Dispatch 1 — Simultaneous Crisis Detection
+1. Quick-scan confirms: G-10 (social + weather + sensor) AND F-8 (social + sensor) both corroborated
+2. MasterOrchestrator dispatches the full 7-agent pipeline
+3. **Fusion**: Full 5-source fusion — scores mention_velocity, sensor thresholds, contradictions
+4. **Analyst**: Classifies 2 crises (G-10 Urban Flood, F-8 Heatwave) with severity, population, radius, duration
+5. **Commander**: Fetches live ETA via Google Maps API (e.g. "12 mins") → injects into LLM for constrained allocation
+6. **Execution**: Simulates rerouting, hospital prep, dispatch — with before/after state and side effects
+7. **Notification**: Sends 6 tailored messages (public, hospitals, police, utility, transport, media)
+8. **Verifier**: No field reports yet → confirms crises active → graph ends normally
 
-### Robustness Demo (During Demo Video)
-1. Call `/api/trigger_outage`
-2. Weather + Traffic APIs return 503 → agents fall back to `_cache`
-3. Trace log shows: `[FALLBACK] weather failed, using cache`
-4. Call `/api/clear_outage` → APIs resume live data
+### Dispatch 2 — False Positive Recovery (Auto-injected after Dispatch 1)
+1. MasterOrchestrator auto-injects a contradictory field report: *"No flooding — broken water main only, water receding"*
+2. On next pipeline dispatch, **Verifier** LLM detects contradiction → `is_false_positive: true`
+3. Retraction notification sent to all audiences
+4. **Conditional edge fires** → routes to **Rollback** node
+5. Rollback parses `"3 Ambulances"`, `"2 Rescue Teams"` → increments inventory counts
+6. Resources freed, system adapted — true agentic recovery demonstrated
+
+### Continuous Monitoring (Dispatch 3, 4, …)
+- MasterOrchestrator keeps scanning every 5s indefinitely
+- 30-second cooldown between pipeline dispatches prevents thrashing
+- Status visible in real-time on mobile **Agent Log** tab
+- Console shows: `🟢 All clear — continuously monitoring 5 sources...` when idle
+
+### Robustness Demo
+1. POST to `/api/trigger_outage` → Weather + Traffic APIs return 503
+2. Agents fall back to `_cache` with logged warning: `[FALLBACK] weather failed, using cache`
+3. POST to `/api/clear_outage` → APIs resume live data
 
 ---
 
