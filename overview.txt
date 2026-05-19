@@ -1,0 +1,23 @@
+CHALLENGE OVERVIEW 
+Cities frequently face localized crises such as urban flooding, heatwaves, road blockages, accidents, infrastructure failures, public disorder, disease spikes, and power outages. Signals may exist across social media, traffic maps, weather alerts, citizen complaints, emergency calls, sensors, and field reports, but response systems are often fragmented and reactive. This challenge requires an agentic system that fuses signals, detects emerging crises, predicts severity, allocates resources, coordinates stakeholders, simulates response actions, and recovers from false alarms or missed detections.
+PROBLEM STATEMENT
+1.	Ingest and fuse at least three signal sources, such as social posts, weather, traffic, emergency calls, mock sensors, field reports, and historical data.
+2.	Detect and classify crisis type, location, severity, confidence, affected population, expected duration, and likely evolution.
+3.	Prioritize and allocate constrained response resources across one or more simultaneous crises.
+4.	Simulate coordinated actions such as traffic rerouting, emergency dispatch, hospital preparation, utility escalation, and public alerts.
+5.	Predict outcomes, side effects, and unintended consequences for each response action. Handle false positives, false negatives, and conflicting signals through verification and escalation logic.
+MANDATORY REQUIREMENT: GOOGLE ANTIGRAVITY
+•	Use Google Antigravity to orchestrate multi-agent crisis detection, signal fusion, severity analysis, resource allocation, stakeholder communication, and action simulation.
+•	Show Antigravity traces for signal interpretation, confidence scoring, priority ranking, resource trade-offs, action execution, and recovery from false or conflicting signals. 
+•	External APIs and mock streams are allowed, but Antigravity must coordinate planning and execution.
+ENHANCED SYSTEM REQUIREMENTS
+•	Multi-signal fusion: Use at least three sources: social media/citizen posts, weather, maps/traffic, emergency call frequency, mock sensors, public transport, or historical vulnerability maps.
+•	Source credibility and misinformation handling: Score source credibility, geolocation confidence, urgency language, mention velocity, and contradiction level. Flag low-confidence or suspicious signals.
+•	Crisis classification: Classify type such as flood, heatwave, accident, infrastructure, power outage, protest, or disease cluster; include severity level and confidence score.
+•	Severity and evolution prediction: Estimate affected radius, population, duration, peak impact time, spread risk, and uncertainty range.
+•	Resource allocation optimization: Model constrained resources such as ambulances, police units, rescue teams, shelters, generators, water tankers, field teams, or drones. Allocate based on impact, urgency, travel time, and resource availability.
+•	Multi-crisis coordination: Handle at least two simultaneous incidents and show trade-offs in prioritization and resource assignment.
+•	Impact simulation: For each action, show before state, response action, expected after state, response time improvement, congestion impact, resource cost, and possible side effects.
+•	Stakeholder notification: Generate tailored messages for the public, emergency services, hospitals, utility companies, transport authority, and media/command center.
+•	False positive/negative handling: Simulate a false alarm, early low-confidence signal, or conflicting signals and show verification, escalation, correction, or alert retraction.
+•	Robustness and degraded mode: Handle API downtime, stale data, missing location, duplicate incidents, and rate limits with fallback sources or manual escalation.

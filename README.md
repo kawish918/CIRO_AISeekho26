@@ -13,19 +13,13 @@
 
   ┌──────────────┐    REST/JSON    ┌──────────────────────┐
   │  Expo Mobile  │◄──────────────►│   FastAPI Backend     │
-  │  (4 screens)  │                │   (Port 8000)         │
+  │  (3 screens)  │                │   (Port 8000)         │
   └──────────────┘                └──────────┬───────────┘
                                              │ HTTP Poll
-  ┌──────────────┐    REST/JSON              ▼
-  │  Vite Web    │◄──────────────► ┌──────────────────────┐
-  │  Dashboard   │                 │   LangGraph Pipeline  │
-  └──────────────┘                 │   (agents.py)         │
-                                   └──────────┬───────────┘
-                                              │ Firestore SDK
-                                              ▼
+                                             ▼
                                    ┌──────────────────────┐
-                                   │  Google Firestore     │
-                                   │  (Cloud Persistence)  │
+                                   │  LangGraph Pipeline  │
+                                   │  (agents.py)         │
                                    └──────────────────────┘
 ```
 
@@ -40,8 +34,8 @@
          │
          ▼
   ┌────────────────────┐
-  │ 1. Fusion & Triage │  ← Polls 4 signal streams, LLM cross-references,
-  │  📡 FusionAgent    │    scores credibility, flags contradictions
+  │ 1. Fusion & Triage │  ← Polls 5 signal streams (Social, Weather, Traffic, Calls, Sensors)
+  │  📡 FusionAgent    │    LLM cross-references, scores credibility, flags contradictions
   └─────────┬──────────┘
             │
             ▼
@@ -101,13 +95,10 @@
 |---|---|---|
 | **LLM Reasoning** | Groq API · Llama 3.3 70B | All 7 agent nodes use structured LLM output |
 | **Agent Orchestration** | LangGraph (`StateGraph`) | Conditional graph with `false_positive_ids` routing |
-| **Backend API** | FastAPI + Pydantic v2 | Signal streams, CRUD, degraded-mode endpoints |
-| **Mobile App** | React Native · Expo SDK 55 | 4 tabs: Agent Mind, Signals, Crises (map), Resources |
-| **Web Dashboard** | Vite · React · TypeScript | Real-time mission control with AgentFlow diagram |
+| **Backend API** | FastAPI + Pydantic v2 | Signal streams, CRUD, degraded-mode endpoints, Dashboard |
+| **Mobile App** | React Native · Expo SDK 55 | 3 tabs: Dashboard, Map, Agent Log (Light Theme) |
 | **Geospatial Intel** | Google Maps Distance Matrix API | Live travel ETAs injected into Commander prompt |
-| **Map Rendering** | Leaflet.js via WebView | OpenStreetMap tiles (works in Expo Go) |
-| **Cloud Persistence** | Google Cloud Firestore | 6 collections persisted across sessions |
-| **ADC Auth** | `gcloud auth application-default` | Keyless Firestore auth via Application Default Credentials |
+| **Map Rendering** | Leaflet.js via WebView | CartoDB Positron light tiles with accurate GPS markers |
 
 ---
 
@@ -118,13 +109,12 @@ This project was **fully orchestrated by Google Antigravity (AI coding assistant
 | Phase | Antigravity Role |
 |---|---|
 | **Architecture** | Designed the 7-node conditional LangGraph pipeline, identified that a linear DAG is insufficient for true adaptability |
-| **Code Generation** | Generated all agent nodes, Pydantic schemas, FastAPI endpoints, React Native screens, Vite dashboard |
-| **Geospatial Intel** | Implemented Google Distance Matrix API integration in Resource Commander |
-| **Firestore Sync** | Designed batched writes for all 6 signal + decision collections |
+| **Code Generation** | Generated all agent nodes, Pydantic schemas, FastAPI endpoints, React Native screens |
+| **Geospatial Intel** | Implemented Google Distance Matrix API integration in Resource Commander and accurate GPS mapping |
 | **Innovation Design** | Identified the `Rollback` node gap and implemented adaptive resource de-allocation on false positive |
 | **Robustness** | Designed `_outage_mode` flag system with `/api/trigger_outage` for demonstrable degraded-mode recovery |
-| **Testing** | Generated 21 automated tests covering all schemas, CRUD endpoints, helpers, and fallback behavior |
-| **Debugging** | Fixed Firestore CRUD test isolation (mocking `db=None`), resolved Expo Go Google Maps limitation |
+| **Testing** | Generated 13 automated tests covering all schemas, CRUD endpoints, helpers, and fallback behavior |
+| **UI/UX Redesign** | Completely redesigned the mobile app to a minimalist light theme with drill-down navigation |
 
 Antigravity trace artifacts (workplan, task plans, reasoning logs) are available in the project's `.gemini/` directory.
 
@@ -132,11 +122,12 @@ Antigravity trace artifacts (workplan, task plans, reasoning logs) are available
 
 ## Data Stream Schemas
 
-### Signal Sources (4 sources ingested each cycle)
+### Signal Sources (5 sources ingested each cycle)
 
 ```python
 SocialSignal:       id, timestamp, location, text, credibility_score,
-                    geolocation_confidence, urgency_score, source_type
+                    geolocation_confidence, urgency_score, mention_velocity,
+                    contradiction_level, source_type
 
 WeatherSignal:      id, timestamp, alert_type, severity, affected_zones[],
                     temperature_c, humidity_pct, wind_speed_kmh
@@ -145,6 +136,9 @@ TrafficSignal:      id, timestamp, route_name, congestion_level,
                     average_speed, incident_reported
 
 EmergencyCall:      id, timestamp, location, call_type, description, frequency
+
+MockSensor:         id, timestamp, sensor_type, location, value, unit,
+                    threshold_exceeded, severity, incident_reported
 ```
 
 ### Agent Outputs
@@ -164,27 +158,18 @@ ImpactSimulation:   id, crisis_id, before_state, response_action,
                     congestion_impact, resource_cost, possible_side_effects[]
 ```
 
-### Firestore Collections
-
-| Collection | Written by | Contains |
-|---|---|---|
-| `active_crises` | `execution_node` | Live crisis documents, upserted by ID |
-| `trace_logs` | `trace()` helper | Every ReACT step from all 7 agents |
-| `signals_social` | `fusion_node` | Raw citizen posts per cycle |
-| `signals_weather` | `fusion_node` | Weather alert structs per cycle |
-| `signals_traffic` | `fusion_node` | Traffic congestion readings per cycle |
-| `signals_emergency_calls` | `fusion_node` | Emergency call logs per cycle |
-
 ---
 
 ## API Endpoints
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/api/social` | GET | Social media signal stream |
+| `/api/social` | GET | Social media signal stream (with mention_velocity) |
 | `/api/weather` | GET | Weather alerts (503 during simulated outage) |
 | `/api/traffic` | GET | Traffic data (503 during simulated outage) |
 | `/api/emergency_calls` | GET | Emergency call logs |
+| `/api/sensors` | GET | IoT sensor stream (water level, temperature) |
+| `/api/dashboard` | GET | Aggregated endpoint for the mobile app home screen |
 | `/api/field_reports` | GET / POST | Field verification reports (trigger Verifier) |
 | `/api/active_crises` | GET / POST / PUT / DELETE | Crisis lifecycle management |
 | `/api/resources` | GET / PUT | Resource inventory (decrements & increments) |
@@ -207,7 +192,6 @@ ImpactSimulation:   id, crisis_id, before_state, response_action,
 - Node.js 18+
 - [Groq API key](https://console.groq.com/) (free tier works)
 - Google Maps API key (for live ETAs — optional, defaults to 15 min)
-- Google Cloud project with Firestore enabled + `gcloud auth application-default login`
 
 ### Environment Variables
 
@@ -234,33 +218,20 @@ cd mobile_app
 npm install
 npx expo start
 # Scan QR with Expo Go app
-
-# 4. Web dashboard (optional, separate terminal)
-cd web_app
-npm install
-npm run dev
-# Open http://localhost:5173
 ```
 
-### APK / Production Build
-
-```bash
-cd mobile_app
-eas build --platform android
-```
-
-> For judge distribution: deploy the FastAPI backend to Render/Railway and update `API` constant in all mobile screen files before building.
+> For distribution: update `API` constant in `mobile_app/src/constants/api.ts` with your local IP or hosted backend URL before running.
 
 ---
 
 ## Scenario Walkthrough
 
 ### Cycle 1 — Simultaneous Crisis Detection
-1. Fusion agent ingests 3 social posts (G-10 flood, F-8 heatwave), 2 weather alerts, 2 traffic readings, 2 emergency call logs
-2. LLM cross-references: G-10 has social + heavy rain + congestion → high confidence flood
-3. Analyst classifies 2 crises with severity, population, radius, duration
-4. Commander fetches live ETA from PIMS Hospital to G-10 via Google Maps API (e.g. "9 mins") → injects into LLM prompt
-5. Resources allocated: 3 Ambulances + 2 Rescue Teams to flood; 1 Ambulance + 1 Field Team to heatwave
+1. Fusion agent ingests data from 5 sources: social posts, weather alerts, traffic readings, emergency calls, and IoT sensors.
+2. LLM cross-references: G-10 has social + heavy rain + congestion + high water-level sensor → high confidence flood
+3. Analyst classifies 2 crises (G-10 Flood, F-8 Heatwave) with severity, population, radius, duration
+4. Commander fetches live ETA from PIMS Hospital to G-10 via Google Maps API (e.g. "12 mins") → injects into LLM prompt
+5. Resources allocated: Ambulances, Rescue Teams, Field Teams based on constrained inventory
 6. Execution simulates rerouting, hospital prep, public alert
 7. Notifications sent to 6 audiences (public, hospitals, police, media...)
 8. Verifier: no field reports yet → confirms crises active
@@ -274,10 +245,10 @@ eas build --platform android
 6. Resources freed, inventory updated, system fully adapted
 
 ### Robustness Demo (During Demo Video)
-1. Click "Simulate Outage" in mobile Resources tab
+1. Call `/api/trigger_outage`
 2. Weather + Traffic APIs return 503 → agents fall back to `_cache`
 3. Trace log shows: `[FALLBACK] weather failed, using cache`
-4. Click "Restore" → APIs resume live data
+4. Call `/api/clear_outage` → APIs resume live data
 
 ---
 
@@ -299,9 +270,9 @@ eas build --platform android
 ## Assumptions & Limitations
 
 - All signal data is **synthetic mock data** — clearly labelled, no PII
-- Resource inventory resets when FastAPI server restarts (Firestore persists crisis/trace data)
-- Maps rendered via **OpenStreetMap / Leaflet** (Google Maps tiles require native EAS build)
-- Location coordinate lookup is fuzzy-matched from a static Islamabad sector dictionary
+- Resource inventory resets when FastAPI server restarts
+- Maps rendered via **OpenStreetMap / CartoDB** (Google Maps tiles require native EAS build, not compatible with simple Expo Go testing)
+- Location coordinate lookup is fuzzy-matched from a static Islamabad sector dictionary to ensure accurate GPS markers
 - LLM reasoning quality depends on Groq API availability and rate limits
 
 ---
@@ -312,6 +283,6 @@ eas build --platform android
 |---|---|---|---|
 | **LLM cost** | ~$0.001/cycle (Groq free tier) | ~$0.01/cycle | Switch to Vertex AI batching |
 | **API latency** | 2–5s per full pipeline | Same (LLM bottleneck) | Parallel node execution |
-| **Storage** | In-memory + Firestore | Firestore handles 1M+ docs | Firestore auto-scales |
+| **Storage** | In-memory | Redis/Postgres handles 1M+ docs | DB auto-scales |
 | **Mobile** | Expo Go / APK (local IP) | APK + hosted backend | CDN + load balancer |
 | **Agents** | 7 nodes, 1 graph instance | Multiple graph workers | LangGraph Cloud / Ray |
