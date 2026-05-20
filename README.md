@@ -377,7 +377,7 @@ PipelineEvent:      id, trigger_source, trigger_detail, timestamp
 
 ### Environment Variables
 
-Create `backend/.env`:
+Create a file named `.env` inside the `backend/` directory:
 ```env
 GROQ_API_KEY=gsk_...
 GOOGLE_MAPS_API_KEY=AIza...   # optional — falls back to 15 min ETA
@@ -385,23 +385,65 @@ GOOGLE_MAPS_API_KEY=AIza...   # optional — falls back to 15 min ETA
 
 ### Running Locally
 
+#### 1. Backend API Server & Agent Orchestrator
+Open a terminal in the root directory:
 ```bash
-# 1. Backend API server (includes ResourceMonitor background task)
+# Navigate to backend folder
 cd backend
+
+# Create a virtual environment
+python -m venv venv
+
+# Activate the virtual environment:
+# On Windows (Command Prompt):
+venv\Scripts\activate.bat
+# On Windows (PowerShell):
+.\venv\Scripts\Activate.ps1
+# On macOS/Linux:
+source venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Start the FastAPI server (includes ResourceMonitor background task)
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# 2. Trigger the pipeline (in a separate terminal)
-curl -X POST http://localhost:8000/api/trigger_pipeline
-
-# 3. Mobile app (in a separate terminal)
-cd mobile_app
-npm install
-npx expo start
-# Scan QR with Expo Go app
 ```
 
-> For distribution: update `API` in `mobile_app/src/constants/api.ts` with your local IP (run `ipconfig` → IPv4 Address).
+#### 2. Web App Dashboard (Vite + React)
+Open a new terminal in the root directory:
+```bash
+# Navigate to web_app folder
+cd web_app
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm run dev
+```
+Open `http://localhost:5173` in your browser.
+
+#### 3. Mobile App (Expo / React Native)
+Open a new terminal in the root directory:
+```bash
+# Navigate to mobile_app folder
+cd mobile_app
+
+# Install dependencies
+npm install
+
+# Start Expo
+npx expo start
+```
+* **Simulators**: Press `i` for the iOS simulator or `a` for the Android emulator.
+* **Physical Device**: Download the **Expo Go** app from the App Store/Google Play Store and scan the QR code displayed in your terminal.
+* **Important**: If running on a physical phone, update the `API` endpoint in `mobile_app/src/constants/api.ts` to your computer's local IP address (e.g., `http://192.168.1.XX:8000/api`) instead of `localhost`.
+
+#### 4. Triggering a Demo Spike (Optional)
+If you want to manually trigger the pipeline for a demo, open a new terminal and run:
+```bash
+curl -X POST http://localhost:8000/api/trigger_pipeline
+```
 
 ---
 
