@@ -1,0 +1,204 @@
+import os
+import time
+import requests
+import json
+from typing import TypedDict, List, Dict, Any
+from dotenv import load_dotenv
+
+from langchain_groq import ChatGroq
+from langchain_core.prompts import ChatPromptTemplate
+from langgraph.graph import StateGraph, END
+from pydantic import BaseModel, Field
+
+# Load environment variables
+load_dotenv()
+
+# --- 1. DEFINE THE STATE ---
+# This dictionary is passed from agent to agent. It acts as their shared memory.
+class CrisisState(TypedDict):
+    raw_signals: List[Dict[str, Any]]
+    detected_anomalies: List[Dict[str, Any]]
+    active_crises: List[Dict[str, Any]]
+    resource_inventory: Dict[str, int]
+    simulated_actions: List[Dict[str, Any]]
+    trace_logs: List[Dict[str, Any]]
+
+# --- 2. INITIALIZE THE GROQ LLM ---
+# Using Llama 3 70B for heavy reasoning. Temperature 0 for deterministic, logical outputs.
+llm = ChatGroq(
+    temperature=0, 
+    model_name="llama3-70b-8192",
+    api_key=os.getenv("GROQ_API_KEY")
+)
+
+# --- 3. PYDANTIC SCHEMAS FOR STRUCTURED LLM OUTPUT ---
+class CrisisClassification(BaseModel):
+    crisis_type: str = Field(description="Type of crisis (e.g., Flood, Heatwave)")
+    location: str = Field(description="Affected area")
+    severity: str = Field(description="Low, Medium, High, or Critical")
+    confidence_score: int = Field(description="0 to 100 confidence in this assessment")
+    reasoning: str = Field(description="Why this classification was made")
+
+class ResourceAllocation(BaseModel):
+    crisis_id: str
+    allocated_ambulances: int
+    allocated_police: int
+    trade_off_reasoning: str = Field(description="Explain why resources were assigned this way, especially if constrained.")
+
+# --- 4. DEFINE THE AGENT NODES ---
+
+def fusion_triage_node(state: CrisisState) -> CrisisState:
+    """The Ear: Polls FastAPI and detects contradictions or anomalies."""
+    print("\n--- [AGENT: Fusion & Triage] ---")
+    state["trace_logs"].append({"agent": "Fusion", "action": "Polling APIs for signals."})
+    
+    try:
+        # Fetching synthetic data from your FastAPI server
+        # Replace these with your actual FastAPI endpoints
+        # social_data = requests.get("http://localhost:8000/api/social").json()
+        
+        # MOCK DATA FOR TESTING LOGIC:
+        signals = [
+            {"source": "social", "text": "Water entering homes in G-10!", "location": "G-10"},
+            {"source": "weather", "text": "Heavy rainfall warning for Sector G", "location": "G-10"},
+            {"source": "social", "text": "Multiple heatstrokes reported at F-8 market", "location": "F-8"}
+        ]
+        
+        state["raw_signals"] = signals
+        state["trace_logs"].append({"agent": "Fusion", "action": f"Ingested {len(signals)} signals."})
+        
+    except Exception as e:
+        print(f"Fusion Error: {e}")
+    
+    return state
+
+
+def analyst_node(state: CrisisState) -> CrisisState:
+    """The Brain: Classifies the raw signals into structured crises."""
+    print("--- [AGENT: Crisis Analyst] ---")
+    
+    if not state["raw_signals"]:
+        return state
+
+    # Prompt the LLM to analyze the signals
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are a crisis intelligence analyst. Review the incoming signals and identify the major crisis. Output strictly in the requested JSON format."),
+        ("user", "Signals: {signals}")
+    ])
+    
+    # Bind the Pydantic model to force perfect JSON out of Groq
+    structured_llm = llm.with_structured_output(CrisisClassification)
+    chain = prompt | structured_llm
+    
+    analysis = chain.invoke({"signals": json.dumps(state["raw_signals"])})
+    
+    # Store the result
+    new_crisis = {
+        "id": f"CRISIS-{int(time.time())}",
+        "type": analysis.crisis_type,
+        "location": analysis.location,
+        "severity": analysis.severity,
+        "confidence": analysis.confidence_score
+    }
+    
+    state["active_crises"].append(new_crisis)
+    state["trace_logs"].append({
+        "agent": "Analyst", 
+        "action": f"Classified {analysis.crisis_type} with {analysis.confidence_score}% confidence.",
+        "reasoning": analysis.reasoning
+    })
+    
+    print(f"Detected: {analysis.crisis_type} at {analysis.location}")
+    return state
+
+
+def commander_node(state: CrisisState) -> CrisisState:
+    """The General: Allocates constrained resources."""
+    print("--- [AGENT: Resource Commander] ---")
+    
+    if not state["active_crises"]:
+        return state
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are an emergency resource commander. You have limited inventory. Distribute them based on severity. Output strictly in the requested JSON format."),
+        ("user", "Active Crises: {crises}\nAvailable Inventory: {inventory}")
+    ])
+    
+    structured_llm = llm.with_structured_output(ResourceAllocation)
+    chain = prompt | structured_llm
+    
+    allocation = chain.invoke({
+        "crises": json.dumps(state["active_crises"]),
+        "inventory": json.dumps(state["resource_inventory"])
+    })
+    
+    state["trace_logs"].append({
+        "agent": "Commander", 
+        "action": f"Allocated {allocation.allocated_ambulances} amb to {allocation.crisis_id}.",
+        "reasoning": allocation.trade_off_reasoning
+    })
+    
+    print(f"Trade-off Logic: {allocation.trade_off_reasoning}")
+    return state
+
+
+def execution_node(state: CrisisState) -> CrisisState:
+    """The Hands: Pushes the final actions back to the FastAPI database."""
+    print("--- [AGENT: Execution] ---")
+    
+    # Here you would use requests.post() to push the active_crises 
+    # and trace_logs back to your FastAPI endpoints so the Mobile App can see them.
+    
+    state["trace_logs"].append({"agent": "Execution", "action": "Pushed updates to API."})
+    print("Actions simulated and pushed to dashboard.")
+    return state
+
+
+# --- 5. BUILD THE LANGGRAPH ---
+workflow = StateGraph(CrisisState)
+
+# Add all nodes
+workflow.add_node("Fusion", fusion_triage_node)
+workflow.add_node("Analyst", analyst_node)
+workflow.add_node("Commander", commander_node)
+workflow.add_node("Execution", execution_node)
+
+# Define the flow
+workflow.set_entry_point("Fusion")
+workflow.add_edge("Fusion", "Analyst")
+workflow.add_edge("Analyst", "Commander")
+workflow.add_edge("Commander", "Execution")
+workflow.add_edge("Execution", END)
+
+# Compile the graph
+app = workflow.compile()
+
+
+# --- 6. THE AUTONOMOUS LOOP ---
+def run_autonomous_system():
+    print("Starting CIRO Autonomous Multi-Agent Loop...")
+    
+    # Initial State
+    state = {
+        "raw_signals": [],
+        "detected_anomalies": [],
+        "active_crises": [],
+        "resource_inventory": {"ambulances": 5, "police_units": 3},
+        "simulated_actions": [],
+        "trace_logs": []
+    }
+    
+    # Run the continuous loop
+    while True:
+        # Clear logs and signals for the new tick
+        state["trace_logs"] = []
+        state["raw_signals"] = []
+        
+        # Execute the graph
+        state = app.invoke(state)
+        
+        print("\n--- TICK COMPLETE. WAITING 10 SECONDS... ---")
+        time.sleep(10) # Wait 10 seconds before polling the API again
+
+if __name__ == "__main__":
+    run_autonomous_system()

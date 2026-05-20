@@ -494,3 +494,12 @@ npx expo start
 | **Agents** | 7 nodes + 3 sub-agents, 1 graph instance | Multiple graph workers | LangGraph Cloud / Ray |
 | **TTL Monitor** | FastAPI asyncio task (5s) | Celery beat / Redis TTL | Distributed task queue |
 | **Event triggers** | Thread-based | Message queue (Redis pub/sub) | Kafka / Cloud Pub/Sub |
+
+---
+
+## Privacy & Safety Note
+
+- **Synthetic Mock Data:** All inputs (signals, social posts, sensor readings, emergency calls, field reports) used by CIRO are entirely synthetic mock data representing public safety events in Islamabad, Pakistan.
+- **No PII:** No personally identifiable information (PII) is captured, stored, or processed by the system.
+- **Safety Boundary:** CIRO is a decision-support advisory system prototype; final emergency dispatch authorization and human-in-the-loop overrides remain mandatory for physical resource mobilization in public safety environments.
+

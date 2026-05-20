@@ -1,0 +1,109 @@
+Implementing Point 2: Multi-Agent Cognitive Friction (The Advisory Board)
+Let’s build the Advisory Board loop inside your CommanderAgent node. Instead of letting one LLM call make high-stakes resource choices, we will force two conflicting sub-agent personas to debate the trade-offs before outputting the final structured decision to your Pydantic schema.
+
+Here is the complete drop-in replacement code for your commander_node in agents.py:
+
+Python
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
+def commander_node(state: CrisisState) -> CrisisState:
+    print("\n--- [AGENT: Resource Commander Advisory Board] ---")
+    if not state["active_crises"]:
+        return state
+
+    # 1. Gather environmental state data
+    crises_json = json.dumps(state["active_crises"], indent=2)
+    inventory_json = json.dumps(state["resource_inventory"], indent=2)
+    
+    print("[Advisory Board] Initiating internal strategic debate...")
+    state["trace_logs"].append({
+        "agent": "Commander", 
+        "action": "Initiating multi-agent consensus loop."
+    })
+
+    # --- SUB-AGENT 1: THE FIELD OPERATIONS COMMANDER ---
+    # Focus: Speed, tactical survival, direct life-saving actions.
+    field_prompt = ChatPromptTemplate.from_messages([
+        ("system", (
+            "You are the Field Operations Commander for emergency services. "
+            "Your sole focus is tactical survival, raw speed, and immediate life-saving actions. "
+            "Review the active crises and available resource inventory. State your aggressive tactical dispatch plan "
+            "and justify it purely based on saving lives immediately. Be concise."
+        )),
+        ("user", "Active Crises:\n{crises}\n\nAvailable Inventory:\n{inventory}")
+    ])
+    field_chain = field_prompt | llm | StrOutputParser()
+    field_perspective = field_chain.invoke({"crises": crises_json, "inventory": inventory_json})
+    
+    print(f"\n📢 [Field Commander]: {field_perspective}\n")
+
+    # --- SUB-AGENT 2: THE CIVIL LOGISTICS DIRECTOR ---
+    # Focus: Resource preservation, infrastructure safety, side-effect mitigation, long-term costs.
+    logistics_prompt = ChatPromptTemplate.from_messages([
+        ("system", (
+            "You are the Civil Logistics Director. Your focus is macro-level coordination, "
+            "resource preservation, preventing depletion, and mitigating dangerous side effects (e.g., leaving a vital area vulnerable). "
+            "Review the active crises, inventory, and the Field Operations Commander's initial proposal. "
+            "Critique their plan. Identify hidden logistical risks, resource exhaustion bottlenecks, or unintended side effects."
+        )),
+        ("user", (
+            "Active Crises:\n{crises}\n\n"
+            "Available Inventory:\n{inventory}\n\n"
+            "Field Commander's Plan:\n{field_plan}"
+        ))
+    ])
+    logistics_chain = logistics_prompt | llm | StrOutputParser()
+    logistics_perspective = logistics_chain.invoke({
+        "crises": crises_json, 
+        "inventory": inventory_json, 
+        "field_plan": field_perspective
+    })
+    
+    print(f"⚖️ [Logistics Director]: {logistics_perspective}\n")
+
+    # --- SUB-AGENT 3: THE MASTER SYNTHESIZER (The Final Structured Output) ---
+    # Focus: Neutral arbiter that resolves the friction and outputs the strict Pydantic model.
+    consensus_prompt = ChatPromptTemplate.from_messages([
+        ("system", (
+            "You are the Master Emergency Coordinator. You have listened to the debate between the Field Operations Commander "
+            "and the Civil Logistics Director. Resolve their conflict neutrally. "
+            "Apply the strict Priority Score methodology: Score = (Severity Multiplier) * Affected_Population / ETA. "
+            "Synthesize their arguments into a final, mathematically justified allocation plan. "
+            "Output strictly according to the structured tool schema requested."
+        )),
+        ("user", (
+            "Active Crises:\n{crises}\n\n"
+            "Available Inventory:\n{inventory}\n\n"
+            "Debate Transcript:\n"
+            "- Field Ops Plan: {field_plan}\n"
+            "- Logistics Critique: {logistics_plan}"
+        ))
+    ])
+    
+    # Bind the existing ResourceAllocation schema to ensure perfect JSON parsing
+    structured_llm = llm.with_structured_output(ResourceAllocation)
+    consensus_chain = consensus_prompt | structured_llm
+    
+    final_allocation = consensus_chain.invoke({
+        "crises": crises_json,
+        "inventory": inventory_json,
+        "field_plan": field_perspective,
+        "logistics_plan": logistics_perspective
+    })
+    
+    # 2. Append the beautiful, gritty debate to the trace logs for the judges to see
+    debate_history = (
+        f"[Field Ops]: {field_perspective}\n\n"
+        f"[Logistics]: {logistics_perspective}\n\n"
+        f"[Consensus Resolution]: {final_allocation.trade_off_reasoning}"
+    )
+    
+    state["trace_logs"].append({
+        "agent": "ResourceCommander",
+        "action": f"Allocated resources to crisis {final_allocation.crisis_id}",
+        "reasoning": debate_history
+    })
+    
+    print(f"✅ [Consensus Reached]: Allocation finalized. Logs populated.")
+    return state
