@@ -4,35 +4,97 @@
 
 ---
 
+## 🔗 Live Deployment Links
+
+| Platform | URL |
+|---|---|
+| **Backend API** (Cloud Run) | https://ciro-backend-720063557968.us-central1.run.app |
+| **Web Dashboard** (Netlify) | https://kaleidoscopic-pasca-baef63.netlify.app/ |
+| **Mobile App** (APK) | https://drive.google.com/drive/folders/1EbteF1fOAdQm27AfUAGA7_JUb2zm1nPz?usp=drive_link |
+| **API Health Check** | https://ciro-backend-720063557968.us-central1.run.app/api/health |
+
+---
+
+## 🧑‍⚖️ Judge Walkthrough — Interactive Demo
+
+> **Important:** The backend resets to a clean state on each deployment. When you first open the web app, the dashboard will be empty and the system will be idle. This is by design — CIRO is event-driven and only activates when a signal spike is detected.
+
+### Step 1: Open the Web Dashboard
+Open the Netlify URL in your browser. Wait ~5–10 seconds for the Cloud Run backend to cold-start. The connection indicator in the top-right will change from **OFFLINE** → **ONLINE**.
+
+### Step 2: Trigger the Pipeline
+Click the **"Trigger Pipeline Run"** button in the control bar. Watch the **Live Multi-Agent Orchestration Graph** at the top — each agent lights up as it processes:
+
+```
+Orchestrator → Fusion → Analyst → Advisory Board → Execution → Notify → Verifier
+```
+
+Within ~15 seconds, the dashboard will populate with:
+- **4 detected events**: G-10 Flood (Critical), F-8 Heatwave (High), I-9 Accident (Low), G-13 Power Flicker (Low)
+- **Resource allocations** with live countdown timers
+- **Priority Scores** mathematically locked (e.g., Flood: ~75,000 vs Heatwave: ~43,333)
+
+### Step 3: Explore the Detail Panel
+Click any crisis card to open the **side drawer** showing:
+- 📊 Locked Priority Score formula explanation
+- 🏛️ **Advisory Board Debate Transcript** (Field Commander vs. Logistics Director → Synthesizer consensus)
+- ⏳ Resource commitment countdowns
+- 📈 Impact simulation predictions
+- 📨 Tailored stakeholder notifications (6 audiences)
+
+### Step 4: Inject a False-Positive Report
+Click **"Inject WASA Field Report"**. This simulates a WASA field engineer contradicting the G-10 Flood — "No flooding found. Root cause is a broken water main."
+
+Watch the **Agent Log tab** — the system automatically:
+1. Routes to the **Verification-Only Path** (skips full pipeline)
+2. **VerifierAgent** confirms the false positive
+3. **RollbackAgent** frees all flood-allocated resources back to inventory
+4. G-10 Flood disappears from the dashboard
+
+### Step 5: Observe the Gas Leak Crisis
+~30 seconds after rollback, a **new crisis emerges automatically**: Gas Pipeline Rupture at Blue Area. The freed flood resources are reallocated to this new crisis by the Advisory Board.
+
+This demonstrates the **full resource lifecycle**: detect → allocate → verify → rollback → reallocate.
+
+### Step 6: Test Robustness (Optional)
+Click **"Simulate API Outage"** to disable Weather and Traffic APIs. The agents will fall back to cached data with a `[DEGRADED]` warning in traces. Click **"Restore APIs"** to resume live data.
+
+### Step 7: View the Map
+Switch to the **Crisis Map** tab. Click any crisis in the sidebar to **fly the map** to its GPS coordinates. Markers are severity-colored (red = Critical, amber = High, blue = Medium/Low).
+
+### Step 8: Review Agent Reasoning
+Switch to the **Agent Log** tab. Use the filter dropdown to isolate specific agents. Expand any trace card to see the full **ReACT loop** (Observe → Think → Act → Result).
+
+---
+
 ## Architecture Overview
 
 ```
   ┌──────────────┐    REST/JSON    ┌──────────────────────┐
   │  Expo Mobile  │◄──────────────►│   FastAPI Backend     │
-  │  (3 screens)  │                │   (Port 8000)         │
-  └──────────────┘                └──────────┬───────────┘
-                                             │
-                      ┌──────────────────────┴──────────────────────┐
-                      │                                             │
-                      ▼                                             ▼
-          ┌──────────────────────────┐              ┌──────────────────────────┐
-          │  EVENT-DRIVEN TRIGGER    │              │  ResourceMonitor (TTL)   │
-          │  • Spike detection in    │              │  • Checks every 5s       │
-          │    signal endpoints      │              │  • Auto-frees expired    │
-          │  • Social velocity > 15  │              │    resource allocations  │
-          │  • Sensor threshold      │              │  • Triggers re-evaluation│
-          │    exceeded (Critical)   │              │    on resource freed     │
-          │  • Field report →        │              └──────────────────────────┘
-          │    Verification-only path│
-          └────────────┬─────────────┘
-                       │
-                       ▼
-          ┌──────────────────────────────┐
-          │  MasterOrchestrator          │
-          │  (agents.py)                 │
-          │  ├─► Full Pipeline (7 nodes) │
-          │  └─► Verify-only path (2)    │
-          └──────────────────────────────┘
+  │  (3 screens)  │                │   (Cloud Run)         │
+  ├──────────────┤                └──────────┬───────────┘
+  │  Web Dashboard│◄──────────────►           │
+  │  (Netlify)    │                           │
+  └──────────────┘        ┌───────────────────┴──────────────────────┐
+                          │                                          │
+                          ▼                                          ▼
+              ┌──────────────────────────┐           ┌──────────────────────────┐
+              │  EVENT-DRIVEN TRIGGER    │           │  ResourceMonitor (TTL)   │
+              │  • Social velocity > 15  │           │  • Checks every 5s       │
+              │  • Sensor threshold      │           │  • Auto-frees expired    │
+              │    exceeded (Critical)   │           │    resource allocations  │
+              │  • Field report →        │           │  • Triggers re-evaluation│
+              │    Verification-only path│           └──────────────────────────┘
+              └────────────┬─────────────┘
+                           │
+                           ▼
+              ┌──────────────────────────────┐
+              │  MasterOrchestrator          │
+              │  (agents.py — LangGraph)     │
+              │  ├─► Full Pipeline (7 nodes) │
+              │  └─► Verify-only path (2)    │
+              └──────────────────────────────┘
 ```
 
 ---
@@ -68,10 +130,6 @@ Unlike a simple polling loop, CIRO uses **event-driven spike detection**. The sy
   │                          └────────────────────────────────┘ │
   └─────────────────────────────────────────────────────────────┘
 ```
-
-### Pipeline Concurrency
-
-When a pipeline is running (either full or verification-only), the **30-second cooldown** prevents overlapping triggers. If a new spike arrives mid-pipeline, it is **deferred** until the cooldown expires. Field reports bypass this cooldown to allow immediate verification, but they only invoke the lightweight 2-node verification path (Verifier + Rollback), not the full 7-node pipeline.
 
 > **Key innovation**: The graph only wakes up and spends Groq API tokens when it is **explicitly poked by a data spike**. No wasted polling cycles.
 
@@ -143,21 +201,6 @@ When a pipeline is running (either full or verification-only), the **30-second c
 
 > **Conditional routing**: Node 6 (Verifier) uses a `conditional_edge` — if a false positive is detected, the graph dynamically routes to Node 7 (Rollback) which de-allocates resources before terminating.
 
-### Verification-Only Path (Field Report Triggers)
-
-When a field report is posted, the pipeline bypasses the full 7-node path and runs **only** Verifier + Rollback. This prevents re-detection and re-allocation of resources to crises that are about to be retracted.
-
-```
-  POST /api/field_reports
-       │
-       ▼ (cooldown bypassed)
-  _verify_only()
-       │
-       ├─► Verifier Node ─── false positive? ── YES ──► Rollback Node
-       │                                                      │
-       └──── NO ──► End                                       ▼ End
-```
-
 ---
 
 ## Multi-Agent Cognitive Friction (The Advisory Board)
@@ -176,7 +219,23 @@ A single LLM making massive resource allocation decisions lacks the checks and b
 2. **Logistics Director** reads the proposal and **critiques it** — identifying resource depletion risks, infrastructure bottlenecks, and unintended consequences (free-text LLM call)
 3. **Master Synthesizer** reads the debate transcript and produces the final **structured allocation** using locked Priority Scores (structured output LLM call)
 
-The full debate transcript is persisted in the Agent Trace logs, visible in the mobile app's Agent Log tab. Judges can read the AI arguing with itself before reaching consensus.
+The full debate transcript is persisted in the Agent Trace logs, visible in both the web dashboard and mobile app's Agent Log tab.
+
+---
+
+## Simulation Events
+
+CIRO processes 4 base events plus 1 conditional post-rollback crisis:
+
+| # | Event | Location | Severity | Signal Velocity | Trigger |
+|---|-------|----------|----------|----------------|---------|
+| 1 | 🌊 Urban Flood | G-10 Markaz | Critical | 23 (high) | Always active |
+| 2 | 🔥 Heatwave Emergency | F-8 Residential | High | 11 (moderate) | Always active |
+| 3 | 🚗 Minor Traffic Accident | I-9 Service Road | Low | 3 (low) | Always active |
+| 4 | ⚡ Power Flicker | G-13 Grid Station | Low | 2 (low) | Always active |
+| 5 | 💨 Gas Pipeline Rupture | Blue Area Commercial | Critical | 19 (high) | **Only after flood rollback** |
+
+Events 3 & 4 demonstrate that the LLM correctly classifies low-priority incidents and allocates minimal resources. Event 5 only appears when the G-10 flood is rolled back as a false positive, demonstrating the full lifecycle: detect → rollback → reallocate freed resources.
 
 ---
 
@@ -202,10 +261,8 @@ The full debate transcript is persisted in the Agent Trace logs, visible in the 
 
 ## Priority Score Matrix
 
-The Resource Commander doesn't guess — it uses a **mathematical Priority Score** to justify allocation:
-
 ```
-  Priority Score = Severity_Multiplier × Affected_Population ÷ Google_Maps_ETA_minutes
+Priority Score = Severity_Multiplier × Affected_Population ÷ Google_Maps_ETA_minutes
 ```
 
 | Severity | Multiplier |
@@ -220,7 +277,7 @@ The Resource Commander doesn't guess — it uses a **mathematical Priority Score
 - F-8 Heatwave (High, 52K pop, 6-min ETA): `5 × 52000 ÷ 6 = 43,333`
 - G-10 gets resources **first** — mathematically justified, LLM-proof
 
-The Priority Score is **locked** — computed in Python before any LLM call and enforced after the Synthesizer returns. The LLM's output is overwritten with our deterministic value.
+The Priority Score is **locked** — computed in Python before any LLM call and enforced after the Synthesizer returns.
 
 ---
 
@@ -229,31 +286,20 @@ The Priority Score is **locked** — computed in Python before any LLM call and 
 Resources aren't just allocated — they have a **Time-To-Live (TTL)** and are automatically freed when the crisis duration expires.
 
 ```
-  ┌───────────────────────────────────────────────────────────┐
-  │              RESOURCE LIFECYCLE                           │
-  │                                                           │
-  │   Advisory Board allocates:                               │
-  │   "3 Ambulances" → G-10 Flood                           │
-  │   allocated_at: 14:30:00                                 │
-  │   release_at:   14:31:00  (TTL = duration × 0.25 min)   │
-  │   status: "active"                                       │
-  │                                                           │
-  │   ResourceMonitor (every 5s):                            │
-  │   ┌──────────────────────────────────────────┐           │
-  │   │  if current_time > release_at:           │           │
-  │   │    → increment inventory                 │           │
-  │   │    → status = "released"                 │           │
-  │   │    → post AgentTrace                     │           │
-  │   │    → trigger pipeline re-evaluation      │           │
-  │   └──────────────────────────────────────────┘           │
-  │                                                           │
-  │   On crisis deletion (DELETE /api/active_crises):        │
-  │   → All associated allocations marked "released"         │
-  │   → Timers stop immediately in mobile app                │
-  └───────────────────────────────────────────────────────────┘
+  Advisory Board allocates: "3 Ambulances" → G-10 Flood
+  allocated_at: 14:30:00
+  release_at:   14:31:00  (TTL = duration × 0.25 min)
+  status: "active"
+
+  ResourceMonitor (every 5s):
+    if current_time > release_at:
+      → increment inventory
+      → status = "released"
+      → post AgentTrace
+      → trigger pipeline re-evaluation
 ```
 
-The mobile app shows live countdown timers for each allocation, and "✓ Released" when resources auto-free.
+Both the web dashboard and mobile app show live countdown timers for each allocation, and "✓ Released" when resources auto-free.
 
 ---
 
@@ -265,9 +311,11 @@ The mobile app shows live countdown timers for each allocation, and "✓ Release
 | **Agent Orchestration** | LangGraph (`StateGraph`) | Conditional graph with `false_positive_ids` routing |
 | **Cognitive Friction** | 3 sub-agent Advisory Board | Field Commander ↔ Logistics Director → Synthesizer |
 | **Backend API** | FastAPI + Pydantic v2 | Signal streams, CRUD, event-driven triggers, TTL monitor |
+| **Web Dashboard** | React 19 + Vite + Leaflet.js | 3 tabs: Dashboard, Interactive Map, Agent Log |
 | **Mobile App** | React Native · Expo SDK 55 | 3 tabs: Dashboard, Map (full-screen Leaflet), Agent Log |
+| **Deployment** | Google Cloud Run + Netlify | Backend: containerized Docker, Frontend: static SPA |
 | **Geospatial Intel** | Google Maps Distance Matrix API | Live travel ETAs for Priority Score calculation |
-| **Map Rendering** | Leaflet.js via WebView | CartoDB Positron tiles with GPS markers (flex layout) |
+| **Map Rendering** | Leaflet.js + CartoDB Positron | GPS markers with severity-colored circles |
 | **Resource Lifecycle** | FastAPI Background Tasks | TTL-based auto-free with pipeline re-trigger (5s check) |
 
 ---
@@ -280,62 +328,67 @@ This project was **fully orchestrated by Google Antigravity (AI coding assistant
 |---|---|
 | **Architecture** | Designed the 7-node conditional LangGraph pipeline, event-driven spike detection, and TTL resource lifecycle |
 | **Advisory Board** | Designed the 3 sub-agent cognitive friction loop (Field Commander ↔ Logistics Director → Synthesizer) |
-| **Code Generation** | Generated all agent nodes, Pydantic schemas, FastAPI endpoints, React Native screens |
+| **Code Generation** | Generated all agent nodes, Pydantic schemas, FastAPI endpoints, React Native screens, Web dashboard |
 | **Priority Matrix** | Implemented the mathematical Priority Score formula with locked deterministic values |
 | **Resource Lifecycle** | Designed TTL-based resource allocation with auto-free monitor and pipeline re-trigger |
 | **Verification Path** | Built the verification-only routing (field reports skip Fusion/Analyst/Commander) |
 | **Event-Driven Design** | Replaced polling with spike-detection triggers in signal endpoints |
 | **Geospatial Intel** | Implemented Google Distance Matrix API integration for accurate Priority Scores |
+| **Web Dashboard** | Built the full Mission Control web app with Leaflet maps, glassmorphic dark UI, and detail drawers |
+| **Cloud Deployment** | Containerized backend with Dockerfile, deployed to Cloud Run with env vars, Netlify for frontend |
 | **Robustness** | Designed `_outage_mode` flag system with degraded-mode cache fallback |
 | **Testing** | Generated 22 automated tests covering all schemas, CRUD endpoints, helpers, and fallback behavior |
-| **UI/UX** | Redesigned mobile app with priority score badges, TTL countdown timers, and full-screen Leaflet map |
 
 Antigravity trace artifacts (workplan, task plans, reasoning logs) are available in the project's `.gemini/` directory.
 
 ---
 
-## Data Stream Schemas
+## Scenario Walkthrough
 
-### Signal Sources (5 sources ingested each cycle)
+### Startup — Event-Driven Detection
+- Server starts with the **ResourceMonitor** background task (checks every 5s)
+- Signal endpoints (`/api/social`, `/api/sensors`) include spike detection
+- When mention_velocity > 15 or sensor threshold exceeded with Critical severity → **event fires**
+- `_check_and_trigger_spike()` logs a `PipelineEvent` and spawns `run_pipeline_once()` in a background thread
 
-```python
-SocialSignal:       id, timestamp, location, text, credibility_score,
-                    geolocation_confidence, urgency_score, mention_velocity,
-                    contradiction_level, source_type
+### Cycle 1 — Simultaneous Crisis Detection with Advisory Board
+1. Pipeline trigger → full 7-node pipeline runs
+2. **Fusion**: Full 5-source fusion — scores mention_velocity, sensor thresholds, contradictions
+3. **Analyst (LLM)**: Classifies 4 events:
+   - G-10 Urban Flood: severity=Critical, population~45K, duration~4h
+   - F-8 Heatwave: severity=High, population~52K, duration~48h
+   - I-9 Accident: severity=Low, minimal resources
+   - G-13 Power Flicker: severity=Low, acknowledged but deprioritized
+4. **Advisory Board** (3 LLM calls):
+   - 📢 **Field Commander**: "Deploy maximum resources to G-10 immediately"
+   - ⚖️ **Logistics Director**: "Warning: depleting all rescue teams leaves other sectors unprotected"
+   - ✅ **Synthesizer**: Resolves debate → allocates with locked Priority Scores
+5. **Execution**: Simulates rerouting, hospital prep, dispatch — with before/after state and side effects
+6. **Notification**: Sends 6 tailored messages per crisis (public, hospitals, police, utility, transport, media)
+7. **Verifier**: No field reports → confirms crises active → graph ends normally
 
-WeatherSignal:      id, timestamp, alert_type, severity, affected_zones[],
-                    temperature_c, humidity_pct, wind_speed_kmh
+### Cycle 2 — False-Positive Detection & Rollback
+1. Judge clicks "Inject WASA Field Report" → auto-triggers `_verify_only()` (bypasses cooldown)
+2. **Verifier** receives the contradictory field report → LLM confirms false positive for G-10 Flood
+3. **Rollback** parses resource strings → frees inventory counts
+4. G-10 Flood disappears from the dashboard, timers stop immediately
+5. F-8 Heatwave remains active with its resources
 
-TrafficSignal:      id, timestamp, route_name, congestion_level,
-                    average_speed, incident_reported
+### Cycle 3 — Post-Rollback Crisis (Gas Leak at Blue Area)
+1. After rollback, new signals emerge: gas concentration sensor spikes at Blue Area, social media velocity rises to 19
+2. Pipeline auto-triggers on the new spike
+3. Advisory Board debates allocation of **freed resources** to the gas leak crisis
+4. Full lifecycle demonstrated: detect → rollback → reallocate
 
-EmergencyCall:      id, timestamp, location, call_type, description, frequency
+### Resource Auto-Free (TTL Lifecycle)
+1. **ResourceMonitor** checks every 5 seconds for expired allocations
+2. When `current_time > release_at`: allocation released, inventory incremented, pipeline re-triggered
+3. Dashboard shows countdown timers ticking down → "✓ Released" when freed
 
-MockSensor:         id, timestamp, sensor_type, location, value, unit,
-                    threshold_exceeded, severity, incident_reported
-```
-
-### Agent Outputs
-
-```python
-ActiveCrisis:       id, title, description, crisis_type, severity, confidence,
-                    location, status, affected_population, expected_duration_hours,
-                    affected_radius_km, peak_impact_time, spread_risk,
-                    uncertainty_range, likely_evolution, resources_allocated[],
-                    priority_score, lat, lng, timestamp
-
-AgentTrace (ReACT): id, agent_name, step, observation, reasoning,
-                    decision, action, outcome, timestamp
-
-ImpactSimulation:   id, crisis_id, before_state, response_action,
-                    expected_after_state, response_time_improvement,
-                    congestion_impact, resource_cost, possible_side_effects[]
-
-ResourceAllocation: id, crisis_id, crisis_title, resource_type, quantity,
-                    allocated_at, release_at, status ("active" | "released")
-
-PipelineEvent:      id, trigger_source, trigger_detail, timestamp
-```
+### Robustness Demo
+1. Click "Simulate API Outage" → Weather + Traffic APIs return 503
+2. Agents fall back to `_cache` with logged warning: `[FALLBACK] weather failed, using cache`
+3. Click "Restore APIs" → APIs resume live data
 
 ---
 
@@ -348,8 +401,8 @@ PipelineEvent:      id, trigger_source, trigger_detail, timestamp
 | `/api/traffic` | GET | Traffic data (503 during simulated outage) |
 | `/api/emergency_calls` | GET | Emergency call logs |
 | `/api/sensors` | GET | IoT sensor stream (spike detection triggers pipeline) |
-| `/api/dashboard` | GET | Aggregated endpoint for mobile app (includes allocations & events) |
-| `/api/field_reports` | GET / POST | Field verification reports (auto-triggers verification-only pipeline) |
+| `/api/dashboard` | GET | Aggregated endpoint for apps (includes allocations & events) |
+| `/api/field_reports` | GET / POST | Field reports (auto-triggers verification-only pipeline) |
 | `/api/active_crises` | GET / POST / PUT / DELETE | Crisis lifecycle (DELETE also releases allocations) |
 | `/api/resources` | GET / PUT | Resource inventory (decrements & increments) |
 | `/api/resource_allocations` | GET / POST | TTL-tracked resource allocations |
@@ -367,7 +420,7 @@ PipelineEvent:      id, trigger_source, trigger_detail, timestamp
 
 ---
 
-## Setup
+## Setup (Local Development)
 
 ### Prerequisites
 - Python 3.11+
@@ -385,113 +438,35 @@ GOOGLE_MAPS_API_KEY=AIza...   # optional — falls back to 15 min ETA
 
 ### Running Locally
 
-#### 1. Backend API Server & Agent Orchestrator
-Open a terminal in the root directory:
+#### 1. Backend API Server
 ```bash
-# Navigate to backend folder
 cd backend
-
-# Create a virtual environment
 python -m venv venv
-
-# Activate the virtual environment:
-# On Windows (Command Prompt):
-venv\Scripts\activate.bat
-# On Windows (PowerShell):
+# Windows PowerShell:
 .\venv\Scripts\Activate.ps1
-# On macOS/Linux:
+# macOS/Linux:
 source venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
-
-# Start the FastAPI server (includes ResourceMonitor background task)
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-#### 2. Web App Dashboard (Vite + React)
-Open a new terminal in the root directory:
+#### 2. Web Dashboard (Vite + React)
 ```bash
-# Navigate to web_app folder
 cd web_app
-
-# Install dependencies
 npm install
-
-# Start the development server
 npm run dev
 ```
 Open `http://localhost:5173` in your browser.
 
 #### 3. Mobile App (Expo / React Native)
-Open a new terminal in the root directory:
 ```bash
-# Navigate to mobile_app folder
 cd mobile_app
-
-# Install dependencies
 npm install
-
-# Start Expo
 npx expo start
 ```
-* **Simulators**: Press `i` for the iOS simulator or `a` for the Android emulator.
-* **Physical Device**: Download the **Expo Go** app from the App Store/Google Play Store and scan the QR code displayed in your terminal.
-* **Important**: If running on a physical phone, update the `API` endpoint in `mobile_app/src/constants/api.ts` to your computer's local IP address (e.g., `http://192.168.1.XX:8000/api`) instead of `localhost`.
-
-#### 4. Triggering a Demo Spike (Optional)
-If you want to manually trigger the pipeline for a demo, open a new terminal and run:
-```bash
-curl -X POST http://localhost:8000/api/trigger_pipeline
-```
-
----
-
-## Scenario Walkthrough
-
-### Startup — Event-Driven Detection
-- `uvicorn main:app` starts the FastAPI server with the **ResourceMonitor** background task (checks every 5s)
-- Signal endpoints (`/api/social`, `/api/sensors`) include spike detection
-- When mention_velocity > 15 or sensor threshold exceeded with Critical severity → **event fires**
-- `_check_and_trigger_spike()` logs a `PipelineEvent` and spawns `run_pipeline_once()` in a background thread
-
-### Cycle 1 — Simultaneous Crisis Detection with Advisory Board
-1. Manual trigger or social spike detected → triggers full pipeline
-2. **Fusion**: Full 5-source fusion — scores mention_velocity, sensor thresholds, contradictions
-3. **Analyst (LLM)**: Classifies 2 crises with LLM-determined confidence, population, radius, duration, and spread risk:
-   - G-10 Urban Flood: severity=Critical, population~45K, duration~4h, radius~2km
-   - F-8 Heatwave: severity=High, population~52K, duration~48h, radius~5km
-4. **Advisory Board** (3 LLM calls):
-   - 📢 **Field Commander**: "Deploy maximum resources to G-10 immediately — Score 75000 dwarfs heatwave's 43333"
-   - ⚖️ **Logistics Director**: "Warning: depleting all rescue teams for G-10 leaves F-7/I-8 unprotected for any new event"
-   - ✅ **Synthesizer**: Resolves debate → allocates with locked Priority Scores via Pydantic
-5. **Commander** posts `ResourceAllocation` with TTL (`release_at = now + duration × 0.25 min`)
-6. **Execution**: Simulates rerouting, hospital prep, dispatch — with before/after state and side effects
-7. **Notification**: Sends 6 tailored messages (public, hospitals, police, utility, transport, media)
-8. **Verifier**: No field reports yet → confirms crises active → graph ends normally
-9. **False positive injection**: 2 seconds after Cycle 1, a WASA field report is auto-injected
-
-### Cycle 2 — Autonomous Verification & Rollback
-1. `POST /api/field_reports` auto-triggers `_verify_only()` (bypasses cooldown)
-2. **Verifier** receives the contradictory field report → LLM confirms false positive
-3. **Rollback** parses resource strings → frees inventory counts
-4. `DELETE /api/active_crises/{id}` also releases all associated resource allocations
-5. G-10 Flood disappears from the app, timers stop immediately
-6. F-8 Heatwave remains active with its resources
-
-### Resource Auto-Free (TTL Lifecycle)
-1. **ResourceMonitor** checks every 5 seconds for expired allocations
-2. When `current_time > release_at`:
-   - Allocation status → "released"
-   - Inventory incremented (e.g., 3 Ambulances returned)
-   - AgentTrace posted: "ResourceMonitor — auto-freed 3 ambulances"
-   - Pipeline re-triggered: "Resources freed — re-evaluating pending crises"
-3. Mobile app shows countdown timers ticking down → "✓ Released" when freed
-
-### Robustness Demo
-1. POST to `/api/trigger_outage` → Weather + Traffic APIs return 503
-2. Agents fall back to `_cache` with logged warning: `[FALLBACK] weather failed, using cache`
-3. POST to `/api/clear_outage` → APIs resume live data
+* **Physical Device**: Download the **Expo Go** app and scan the QR code.
+* **Important**: Update `mobile_app/src/constants/api.ts` with your local IP for physical device testing.
 
 ---
 
@@ -500,48 +475,19 @@ curl -X POST http://localhost:8000/api/trigger_pipeline
 | Capability | Traditional Rule-Based | CIRO (LangGraph + LLM) |
 |---|---|---|
 | Signal fusion | Manual analyst reviews each source | Automated LLM cross-referencing with credibility scores |
-| Crisis classification | Keyword rules, single source | Multi-source LLM reasoning with confidence, population, radius, duration, spread risk — all AI-determined |
-| Resource allocation | Fixed dispatch tables | **Advisory Board** (3 sub-agent debate) + locked **Priority Score Matrix** with live Google Maps ETA |
+| Crisis classification | Keyword rules, single source | Multi-source LLM reasoning with confidence, population, radius, duration, spread risk |
+| Resource allocation | Fixed dispatch tables | **Advisory Board** (3 sub-agent debate) + locked **Priority Score Matrix** |
 | Decision-making | Single operator judgment | **Cognitive Friction**: Field Commander ↔ Logistics Director → Synthesizer |
-| Multi-crisis coordination | Sequential, one at a time | Parallel prioritization with mathematical trade-off reasoning |
-| Resource lifecycle | Indefinite allocation, manual release | **TTL-based auto-free** with pipeline re-trigger (5s checks) |
-| Pipeline trigger | Fixed polling interval (wasteful) | **Event-driven spike detection** (efficient, source-aware routing) |
+| Resource lifecycle | Indefinite allocation, manual release | **TTL-based auto-free** with pipeline re-trigger |
+| Pipeline trigger | Fixed polling interval (wasteful) | **Event-driven spike detection** (efficient) |
 | False positive handling | Hours-long review cycle | Automated field-report contradiction detection + verification-only path |
-| Resource recovery | Manual re-dispatch after false alarm | **Automatic rollback via conditional graph node** + allocation release |
-| Stakeholder comms | Generic broadcast | 6 tailored audience messages per crisis per LLM |
-| Robustness | Full failure on API downtime | Cache fallback with logged degraded-mode warnings |
-
----
-
-## Assumptions & Limitations
-
-- All signal data is **synthetic mock data** — clearly labelled, no PII
-- Resource inventory resets when FastAPI server restarts
-- Maps rendered via **OpenStreetMap / CartoDB** (Google Maps tiles require native EAS build)
-- Location coordinate lookup is fuzzy-matched from a static Islamabad sector dictionary
-- LLM reasoning quality depends on Groq API availability and rate limits
-- TTL durations are accelerated for demo purposes (hours → ~1 minute)
-- Crisis classification fields (population, duration, radius, confidence, spread_risk) are **fully LLM-determined** — the prompt provides population hints per sector, but the LLM chooses final values
-
----
-
-## Cost & Scalability
-
-| Metric | Current (Local) | 10× Scale | 100× Scale |
-|---|---|---|---|
-| **LLM cost** | ~$0.003/cycle (Groq free tier, 3 Advisory Board calls + 4 node calls) | ~$0.03/cycle | Switch to Vertex AI batching |
-| **API latency** | 5–10s per full pipeline (3 extra calls for Advisory Board) | Same (LLM bottleneck) | Parallel node execution |
-| **Storage** | In-memory | Redis/Postgres handles 1M+ docs | DB auto-scales |
-| **Mobile** | Expo Go / APK (local IP) | APK + hosted backend | CDN + load balancer |
-| **Agents** | 7 nodes + 3 sub-agents, 1 graph instance | Multiple graph workers | LangGraph Cloud / Ray |
-| **TTL Monitor** | FastAPI asyncio task (5s) | Celery beat / Redis TTL | Distributed task queue |
-| **Event triggers** | Thread-based | Message queue (Redis pub/sub) | Kafka / Cloud Pub/Sub |
+| Resource recovery | Manual re-dispatch | **Automatic rollback via conditional graph node** |
+| Robustness | Full failure on API downtime | Cache fallback with degraded-mode warnings |
 
 ---
 
 ## Privacy & Safety Note
 
-- **Synthetic Mock Data:** All inputs (signals, social posts, sensor readings, emergency calls, field reports) used by CIRO are entirely synthetic mock data representing public safety events in Islamabad, Pakistan.
+- **Synthetic Mock Data:** All inputs used by CIRO are entirely synthetic mock data representing public safety events in Islamabad, Pakistan.
 - **No PII:** No personally identifiable information (PII) is captured, stored, or processed by the system.
-- **Safety Boundary:** CIRO is a decision-support advisory system prototype; final emergency dispatch authorization and human-in-the-loop overrides remain mandatory for physical resource mobilization in public safety environments.
-
+- **Safety Boundary:** CIRO is a decision-support advisory system prototype; final emergency dispatch authorization and human-in-the-loop overrides remain mandatory.

@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
-API = "http://localhost:8000/api"
+API = f"http://localhost:{os.getenv('PORT', '8000')}/api"
 
 # ─────────────────────────────────────────────
 # LLM Setup

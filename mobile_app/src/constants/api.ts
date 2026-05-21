@@ -8,4 +8,4 @@
  * For production / APK distribution: replace with your hosted backend URL
  *   e.g. 'https://ciro-backend.onrender.com/api'
  */
-export const API = 'http://192.168.100.51:8000/api';
+export const API = 'https://ciro-backend-720063557968.us-central1.run.app';

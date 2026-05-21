@@ -264,14 +264,34 @@ _cache: Dict[str, Any] = {
 }
 
 # ──────────────────────────────────────────────
-# ── ACTIVE EVENTS (exactly 2 simultaneous crises for demo) ──
-# To add more events: add entries here and uncomment matching weather/traffic/calls below
-_SOCIAL_SIGNALS = [
-    # Event 1: Urban flooding in G-10
+# ── ACTIVE EVENTS ──
+# Base signals (always present) + 2 low-level background events
+# + 1 conditional post-rollback crisis (gas leak at Blue Area)
+_SOCIAL_SIGNALS_BASE = [
+    # Event 1: Urban flooding in G-10  (Critical — high velocity)
     ("G-10", "Water levels rising rapidly! Streets flooded, vehicles submerged near markaz.", 0.92, 0.90, 0.95),
-    # Event 2: Heatwave emergency in F-8
+    # Event 2: Heatwave emergency in F-8  (High — moderate velocity)
     ("F-8", "Elderly neighbor collapsed from heat. Ambulance not arriving. Extremely hot!",  0.90, 0.88, 0.92),
+    # Event 3 (Low): Minor fender-bender at I-9 — low urgency
+    ("I-9", "Small car accident near I-9 service road. Minor traffic slowdown, no injuries.", 0.45, 0.55, 0.20),
+    # Event 4 (Low): Brief power flicker at G-13 — resolved quickly
+    ("G-13", "Power went out for a few seconds in G-13 sector, back on now. Probably load-shedding.", 0.40, 0.50, 0.15),
 ]
+_VELOCITIES_BASE = [23, 11, 3, 2]  # flood=high, heatwave=moderate, accident=low, power=low
+
+# Post-rollback crisis: Gas pipeline rupture at Blue Area
+# Only activates AFTER the G-10 flood is rolled back as false positive
+_GAS_LEAK_SIGNAL = ("Blue Area", "Strong gas smell near Blue Area commercial buildings! People evacuating offices and shops. Fire brigade called!", 0.89, 0.92, 0.91)
+_GAS_LEAK_VELOCITY = 19  # high velocity — will trigger spike detection
+
+def _is_flood_rolled_back() -> bool:
+    """Check if the flood crisis has been resolved/rolled back."""
+    has_run = len(pipeline_events) > 0
+    flood_active = any(
+        'flood' in c.crisis_type.lower() or 'flood' in c.title.lower()
+        for c in active_crises
+    )
+    return has_run and not flood_active
 
 # ── Spike detection & event-driven pipeline trigger (working.txt #2) ──
 _pipeline_lock = threading.Lock()
@@ -310,9 +330,16 @@ def _check_and_trigger_spike(source: str, detail: str):
 @app.get("/api/social", response_model=List[SocialSignal])
 def get_social(background_tasks: BackgroundTasks = None):
     now = datetime.now().isoformat()
-    # mention_velocity: G-10 flood has 23 posts (high velocity = credible surge)
-    # F-8 heatwave has 11 posts (moderate velocity)
-    velocities = [23, 11]
+
+    # Build dynamic signal list
+    signals = list(_SOCIAL_SIGNALS_BASE)
+    velocities = list(_VELOCITIES_BASE)
+
+    # Conditionally inject gas leak crisis after flood rollback
+    if _is_flood_rolled_back():
+        signals.append(_GAS_LEAK_SIGNAL)
+        velocities.append(_GAS_LEAK_VELOCITY)
+
     data = [
         SocialSignal(
             id=str(uuid.uuid4()), timestamp=now, location=s[0], text=s[1],
@@ -320,9 +347,9 @@ def get_social(background_tasks: BackgroundTasks = None):
             geolocation_confidence=round(s[3] + random.uniform(-0.03, 0.03), 2),
             urgency_score=round(s[4] + random.uniform(-0.03, 0.03), 2),
             mention_velocity=velocities[i] + random.randint(-2, 2),
-            contradiction_level=0.0,   # consistent with weather/traffic
+            contradiction_level=0.0,
             source_type="citizen_post"
-        ) for i, s in enumerate(_SOCIAL_SIGNALS)
+        ) for i, s in enumerate(signals)
     ]
     _cache["social"] = [d.model_dump() for d in data]
 
@@ -336,7 +363,7 @@ def get_social(background_tasks: BackgroundTasks = None):
 
 @app.get("/api/sensors", response_model=List[MockSensor])
 def get_sensors():
-    """Mock IoT sensor stream — water level + temperature sensors corroborating active crises."""
+    """Mock IoT sensor stream — water level, temperature, vibration, and gas sensors."""
     now = datetime.now().isoformat()
     data = [
         # Water level sensor in G-10 stormwater drain — confirms flood
@@ -353,7 +380,31 @@ def get_sensors():
             value=round(46.5 + random.uniform(0, 2.5), 1), unit="celsius",
             threshold_exceeded=True, severity=random.choice(["Warning", "Critical"])
         ),
+        # Low-level: vibration sensor at I-9 road (minor accident corroboration)
+        MockSensor(
+            id=str(uuid.uuid4()), timestamp=now,
+            sensor_type="vibration", location="I-9 Service Road",
+            value=round(0.3 + random.uniform(0, 0.1), 2), unit="g-force",
+            threshold_exceeded=False, severity="Normal"
+        ),
+        # Low-level: voltage fluctuation sensor at G-13 grid station
+        MockSensor(
+            id=str(uuid.uuid4()), timestamp=now,
+            sensor_type="voltage", location="G-13 Grid Station",
+            value=round(215 + random.uniform(-5, 5), 1), unit="volts",
+            threshold_exceeded=False, severity="Normal"
+        ),
     ]
+
+    # Post-rollback: gas leak sensor at Blue Area
+    if _is_flood_rolled_back():
+        data.append(MockSensor(
+            id=str(uuid.uuid4()), timestamp=now,
+            sensor_type="gas_concentration", location="Blue Area Commercial Zone",
+            value=round(850 + random.uniform(0, 150), 0), unit="ppm",
+            threshold_exceeded=True, severity="Critical"
+        ))
+
     _cache["sensors"] = [d.model_dump() for d in data]
 
     # Spike detection: if any sensor exceeds threshold with Critical severity
@@ -434,7 +485,26 @@ def get_traffic():
             average_speed=round(3 + random.uniform(0, 6), 1),
             incident_reported=True
         ),
+        # Low-level: minor slowdown at I-9 (fender-bender corroboration)
+        TrafficSignal(
+            id=str(uuid.uuid4()), timestamp=now,
+            route_name="I-9 Service Road",
+            congestion_level="Moderate",
+            average_speed=round(25 + random.uniform(0, 10), 1),
+            incident_reported=True
+        ),
     ]
+
+    # Post-rollback: road closures near Blue Area due to gas leak
+    if _is_flood_rolled_back():
+        data.append(TrafficSignal(
+            id=str(uuid.uuid4()), timestamp=now,
+            route_name="Jinnah Avenue (Blue Area)",
+            congestion_level=random.choice(["Severe", "Critical"]),
+            average_speed=round(2 + random.uniform(0, 3), 1),
+            incident_reported=True
+        ))
+
     _cache["traffic"] = [d.model_dump() for d in data]
     return data
 
@@ -456,7 +526,24 @@ def get_emergency_calls():
             description="Heatstroke cases surging in low-income residential area",
             frequency=random.randint(3, 9)
         ),
+        # Low-level: single call about minor accident at I-9
+        EmergencyCall(
+            id=str(uuid.uuid4()), timestamp=now, location="I-9",
+            call_type="traffic_accident",
+            description="Minor fender-bender on service road, no injuries, requesting traffic police",
+            frequency=1
+        ),
     ]
+
+    # Post-rollback: gas leak evacuation calls from Blue Area
+    if _is_flood_rolled_back():
+        data.append(EmergencyCall(
+            id=str(uuid.uuid4()), timestamp=now, location="Blue Area",
+            call_type="gas_leak_evacuation",
+            description="Strong gas odour in commercial zone, multiple buildings evacuating, requesting fire brigade",
+            frequency=random.randint(7, 15)
+        ))
+
     _cache["emergency_calls"] = [d.model_dump() for d in data]
     return data
 
@@ -586,7 +673,18 @@ def add_agent_trace(trace: AgentTrace):
 # ──────────────────────────────────────────────
 @app.get("/api/dashboard")
 def get_dashboard():
-    """Aggregated endpoint for the mobile app dashboard."""
+    """Aggregated endpoint for the mobile/web app dashboard.
+    On first poll (no pipeline events yet), internally triggers signal
+    check so the pipeline auto-starts regardless of which client connects first.
+    """
+    # Auto-trigger: if no pipeline has ever run, check signals for spikes
+    if len(pipeline_events) == 0 and len(active_crises) == 0:
+        try:
+            get_social()   # internally runs spike detection → may fire pipeline
+            get_sensors()  # also checks sensor thresholds
+        except Exception:
+            pass  # non-critical — manual trigger still available
+
     return {
         "crises": [c.model_dump() for c in active_crises],
         "resources": resource_inventory.model_dump(),

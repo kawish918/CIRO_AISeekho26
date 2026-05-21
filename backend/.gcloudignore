@@ -1,0 +1,20 @@
+# Ignore frontend mobile folders
+node_modules/
+.expo/
+web-build/
+dist/
+
+# Ignore local Python environments and caches
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Ignore git and local keys
+.git/
+.gitignore
+.env
